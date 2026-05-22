@@ -29,16 +29,16 @@ public class InputManager {
     }
 
     private static void openSign(Player player, Section section, Consumer<String> consumer) {
-        new SignInput(player, StringUtils.formatList(section.getStringList("sign")).toArray(Component[]::new), (player1, result) -> {
+        new SignInput(player, StringUtils.formatList(section.getStringList("sign")).toArray(Component[]::new), (pl, result) -> {
             try {
                 String res = result[0];
-                Scheduler.get().run(() -> {
+                Scheduler.get().run(player, task -> {
                     if (res.isBlank()) {
                         consumer.accept("");
                         return;
                     }
                     consumer.accept(res);
-                });
+                }, () -> {});
             } catch (Exception ex) {
                 ex.printStackTrace();
             }
@@ -58,13 +58,13 @@ public class InputManager {
                     ItemStack item = clickEvent.getInventory().getItem(2);
                     String res = item.getItemMeta().getDisplayName();
                     clickEvent.getInventory().clear();
-                    Scheduler.get().run(() -> consumer.accept(res));
+                    Scheduler.get().run(player, task -> consumer.accept(res), () -> {});
                     ended.set(true);
                 },
                 closeEvent -> {
                     closeEvent.getInventory().clear();
                     if (ended.get()) return;
-                    Scheduler.get().run(() -> consumer.accept(""));
+                    Scheduler.get().run(player, task -> consumer.accept(""), () -> {});
                 }
         ).open();
     }
