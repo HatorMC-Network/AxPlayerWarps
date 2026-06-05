@@ -52,6 +52,8 @@ warp-creation-cost:
   confirm: true
   # price of creation
   price: 1000
+  # Maximum teleport price a player can set for their warp. Set to -1 to disable.
+  max-teleport-price: 10000
   # currencies are defined in the currencies.yml
   currency: Vault
 

@@ -122,6 +122,7 @@ errors:
   player-not-found: "&#FF4444This player has never played on the server!"
   not-a-number: "&#FF4444The given value is not a valid number!"
   must-be-positive: "&#FF4444The given value is not a positive number!"
+  max-price-exceeded: "&#FF4444The teleport price exceeds the maximum allowed price!"
   invalid-name: "&#FF4444The given name is not valid."
   name-exists: "&#FF4444A warp with this name already exists."
   max-lines: "&#FF4444You can not add more lines to the warp's description!"
