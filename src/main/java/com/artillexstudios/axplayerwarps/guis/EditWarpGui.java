@@ -234,6 +234,12 @@ public class EditWarpGui extends GuiFrame {
                                 open();
                                 return;
                             }
+                            int maxPrice = CONFIG.getInt("warp-creation-cost.max-teleport-price", -1);
+                            if (maxPrice > 0 && price > maxPrice) {
+                                MESSAGEUTILS.sendLang(player, "errors.max-price-exceeded");
+                                open();
+                                return;
+                            }
                             warp.setTeleportPrice(price);
                             AxPlayerWarps.getThreadedQueue().submit(() -> AxPlayerWarps.getDatabase().updateWarp(warp));
                         }
