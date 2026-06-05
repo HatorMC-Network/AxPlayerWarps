@@ -112,3 +112,4 @@ buildNumber.properties
 
 # Common working directory
 run/
+!libs/axapi-2.1.0-DEV-31-all.jar
