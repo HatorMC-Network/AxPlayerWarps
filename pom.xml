@@ -89,6 +89,11 @@
 
     <repositories>
         <repository>
+            <id>local-vendor</id>
+            <name>Project-local vendored JARs</name>
+            <url>file://${project.basedir}/local-repo</url>
+        </repository>
+        <repository>
             <id>Artillex-Studios</id>
             <url>https://repo.artillex-studios.com/releases/</url>
         </repository>
@@ -133,7 +138,6 @@
             <groupId>com.artillexstudios.axapi</groupId>
             <artifactId>axapi</artifactId>
             <version>2.1.0-DEV-31</version>
-            <!-- patched jar vendored in libs/ and installed in local Maven repo -->
             <scope>compile</scope>
             <classifier>all</classifier>
         </dependency>
