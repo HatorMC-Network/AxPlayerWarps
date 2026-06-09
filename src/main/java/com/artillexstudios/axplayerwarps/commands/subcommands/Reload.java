@@ -11,9 +11,12 @@ import com.artillexstudios.axplayerwarps.guis.RateWarpGui;
 import com.artillexstudios.axplayerwarps.guis.RecentsGui;
 import com.artillexstudios.axplayerwarps.guis.WarpsGui;
 import com.artillexstudios.axplayerwarps.guis.WhitelistGui;
+import com.artillexstudios.axplayerwarps.AxPlayerWarps;
 import com.artillexstudios.axplayerwarps.hooks.HookManager;
 import com.artillexstudios.axplayerwarps.placeholders.WarpPlaceholders;
 import com.artillexstudios.axplayerwarps.sorting.SortingManager;
+import com.artillexstudios.axplayerwarps.warps.Warp;
+import com.artillexstudios.axplayerwarps.warps.WarpManager;
 import com.artillexstudios.axplayerwarps.world.WorldManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
@@ -121,6 +124,15 @@ public enum Reload {
         WorldManager.reload();
         CategoryManager.reload();
         SortingManager.reload();
+
+        int maxPrice = CONFIG.getInt("warp-creation-cost.max-teleport-price", -1);
+        if (maxPrice > 0) {
+            for (Warp warp : WarpManager.getWarps()) {
+                if (warp.getTeleportPrice() > maxPrice) {
+                    AxPlayerWarps.getInstance().getLogger().warning("[AxPlayerWarps] Warp '" + warp.getName() + "' has teleport price " + warp.getTeleportPrice() + " which exceeds the configured max-teleport-price of " + maxPrice + ". The warp is unaffected but the owner cannot raise the price further.");
+                }
+            }
+        }
 
         Bukkit.getConsoleSender().sendMessage(StringUtils.formatToString("&#33EEBB╚ &#99FFDDSuccessful reload!"));
         MESSAGEUTILS.sendLang(sender, "reload.success");
