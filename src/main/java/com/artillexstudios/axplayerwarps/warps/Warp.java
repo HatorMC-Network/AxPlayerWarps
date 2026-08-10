@@ -4,13 +4,18 @@ import com.artillexstudios.axapi.placeholders.PlaceholderHandler;
 import com.artillexstudios.axapi.scheduler.Scheduler;
 import com.artillexstudios.axapi.utils.Cooldown;
 import com.artillexstudios.axapi.utils.PaperUtils;
+import com.artillexstudios.axintegrations.types.CurrencyIntegration;
 import com.artillexstudios.axplayerwarps.AxPlayerWarps;
+import com.artillexstudios.axplayerwarps.api.events.AxPlayerWarpsDeleteEvent;
+import com.artillexstudios.axplayerwarps.api.events.AxPlayerWarpsPreTeleportEvent;
+import com.artillexstudios.axplayerwarps.api.events.AxPlayerWarpsTeleportEvent;
 import com.artillexstudios.axplayerwarps.category.Category;
 import com.artillexstudios.axplayerwarps.database.impl.Base;
 import com.artillexstudios.axplayerwarps.enums.Access;
 import com.artillexstudios.axplayerwarps.enums.AccessList;
-import com.artillexstudios.axplayerwarps.hooks.currency.CurrencyHook;
+import com.artillexstudios.axplayerwarps.hooks.HookManager;
 import com.artillexstudios.axplayerwarps.placeholders.WarpPlaceholders;
+import com.artillexstudios.axplayerwarps.utils.FormatUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -34,7 +39,7 @@ import static com.artillexstudios.axplayerwarps.AxPlayerWarps.CONFIG;
 import static com.artillexstudios.axplayerwarps.AxPlayerWarps.MESSAGEUTILS;
 
 public class Warp {
-    private final int id;
+    private Integer id;
     private UUID owner;
     private String ownerName;
     private Location location;
@@ -43,7 +48,7 @@ public class Warp {
     private @Nullable Category category;
     private final long created;
     private Access access;
-    private @Nullable CurrencyHook currency;
+    private @Nullable String currency;
     private double teleportPrice;
     private double earnedMoney;
     private Material icon;
@@ -53,18 +58,17 @@ public class Warp {
     private HashSet<UUID> visitors = new HashSet<>();
     private List<Base.AccessPlayer> whitelisted = Collections.synchronizedList(new ArrayList<>());
     private List<Base.AccessPlayer> blacklisted = Collections.synchronizedList(new ArrayList<>());
-    private String worldName;
+    private final String worldName;
 
-    public Warp(int id, long created, @Nullable String description, String name,
+    public Warp(Integer id, long created, @Nullable String description, String name,
                 Location location, String worldName, @Nullable Category category,
-                UUID owner, String ownerName, Access access, @Nullable CurrencyHook currency,
+                UUID owner, String ownerName, Access access, @Nullable String currency,
                 double teleportPrice, double earnedMoney, @Nullable Material icon
     ) {
         location.setX(location.getBlockX());
         location.setY(location.getBlockY());
         location.setZ(location.getBlockZ());
         location.add(0.5, 0, 0.5);
-        this.id = id;
         this.created = created;
         this.description = description;
         this.name = name;
@@ -78,7 +82,15 @@ public class Warp {
         this.teleportPrice = teleportPrice;
         this.earnedMoney = earnedMoney;
         this.icon = icon;
+        if (id != null) setId(id);
+    }
 
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
         AxPlayerWarps.getThreadedQueue().submit(() -> {
             favorites = AxPlayerWarps.getDatabase().getFavorites(this);
             rating = AxPlayerWarps.getDatabase().getAllRatings(this);
@@ -87,14 +99,6 @@ public class Warp {
             whitelisted = AxPlayerWarps.getDatabase().getAccessList(this, AccessList.WHITELIST);
             blacklisted = AxPlayerWarps.getDatabase().getAccessList(this, AccessList.BLACKLIST);
         });
-    }
-
-    public void reload() {
-        // reload category & other stuff
-    }
-
-    public int getId() {
-        return id;
     }
 
     public UUID getOwner() {
@@ -166,12 +170,24 @@ public class Warp {
     }
 
     @Nullable
-    public CurrencyHook getCurrency() {
+    public String getCurrency() {
         return currency;
     }
 
-    public void setCurrency(@Nullable CurrencyHook currency) {
-        this.currency = currency;
+    @Nullable
+    public CurrencyIntegration getCurrencyIntegration() {
+        return CurrencyIntegration.one(currency);
+    }
+
+    @Nullable
+    public HookManager.CurrencyOptions getCurrencyOptions() {
+        CurrencyIntegration integration = getCurrencyIntegration();
+        if (integration == null) return null;
+        return HookManager.getCurrencyOptions(integration);
+    }
+
+    public void setCurrency(@Nullable CurrencyIntegration currency) {
+        this.currency = currency == null ? null : currency.getFormattedName();
     }
 
     public double getTeleportPrice() {
@@ -266,7 +282,7 @@ public class Warp {
     }
 
     public boolean isPaid() {
-        return currency != null && teleportPrice > 0;
+        return currency != null && teleportPrice > 0 && getCurrencyOptions() != null;
     }
 
     public CompletableFuture<Boolean> isDangerous() {
@@ -330,7 +346,7 @@ public class Warp {
             confirmPaid.addCooldown(player, CONFIG.getLong("confirmation-milliseconds"));
             MESSAGEUTILS.sendLang(player, "confirm.paid",
                     Map.of("%warp%", getName(), "%price%",
-                            currency.getDisplayName()
+                            getCurrencyOptions().displayName()
                                     .replace("%price%", WarpPlaceholders.format(teleportPrice))
                     ));
             response.accept(false);
@@ -367,7 +383,7 @@ public class Warp {
             }
 
             // check balance
-            if (!isOwner && isPaid() && currency.getBalance(player.getUniqueId()) < teleportPrice) {
+            if (!isOwner && isPaid() && getCurrencyIntegration().getBalance(player) < teleportPrice) {
                 MESSAGEUTILS.sendLang(player, "errors.not-enough-balance");
                 response.accept(false);
                 return;
@@ -380,35 +396,64 @@ public class Warp {
     public void completeTeleportPlayer(Player player) {
         validateTeleport(player, true, bool -> {
             if (!bool) return;
-            player.closeInventory();
+
             boolean isOwner = player.getUniqueId().equals(owner);
-            if (!isOwner && isPaid()) {
-                currency.takeBalance(player.getUniqueId(), teleportPrice);
-                earnedMoney += teleportPrice;
-                AxPlayerWarps.getThreadedQueue().submit(() -> AxPlayerWarps.getDatabase().updateWarp(this));
-                MESSAGEUTILS.sendLang(player, "money.take", Map.of("%price%",
-                        currency.getDisplayName().replace("%price%", WarpPlaceholders.format(teleportPrice))));
+            boolean needsToPay = !isOwner && isPaid();
+            AxPlayerWarpsPreTeleportEvent preTeleportEvent = new AxPlayerWarpsPreTeleportEvent(player, this, needsToPay ? teleportPrice : 0);
+            Bukkit.getServer().getPluginManager().callEvent(preTeleportEvent);
+            if (preTeleportEvent.isCancelled()) return;
+            double newTeleportPrice = preTeleportEvent.getTeleportPrice();
+
+            player.closeInventory();
+            CompletableFuture<Boolean> future = CompletableFuture.completedFuture(true);
+            if (needsToPay && newTeleportPrice > 0) {
+                future = getCurrencyIntegration().takeBalance(player.getUniqueId(), newTeleportPrice);
+                future.thenAccept(success -> {
+                    if (!success) return;
+
+                    earnedMoney += newTeleportPrice;
+                    AxPlayerWarps.getThreadedQueue().submit(() -> {
+                        AxPlayerWarps.getDatabase().updateWarp(this);
+                    });
+                    MESSAGEUTILS.sendLang(player, "money.take", Map.of(
+                            "%price%", getCurrencyOptions().displayName().replace("%price%", WarpPlaceholders.format(newTeleportPrice)))
+                    );
+                });
             }
 
-            // send message
-            MESSAGEUTILS.sendLang(player, "teleport.success", Map.of("%warp%", getName()));
-            confirmUnsafe.remove(player);
-            confirmPaid.remove(player);
+            future.thenAccept(success -> {
+                if (!success) return;
 
-            PaperUtils.teleportAsync(player, location);
+                Scheduler.get().run(player, task -> {
+                    // send message
+                    MESSAGEUTILS.sendLang(player, "teleport.success", Map.of("%warp%", getName()));
+                    confirmUnsafe.remove(player);
+                    confirmPaid.remove(player);
 
-            for (String m : CONFIG.getStringList("teleport-commands")) {
-                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), PlaceholderHandler.parse(m.replace("%player%", player.getName()), this, player));
-            }
+                    PaperUtils.teleportAsync(player, location);
 
-            AxPlayerWarps.getThreadedQueue().submit(() -> {
-                AxPlayerWarps.getDatabase().addVisit(player, this);
+                    for (String m : CONFIG.getStringList("teleport-commands")) {
+                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), PlaceholderHandler.parse(m.replace("%player%", player.getName()), this, player));
+                    }
+
+                    AxPlayerWarpsTeleportEvent teleportEvent = new AxPlayerWarpsTeleportEvent(player, this, needsToPay ? teleportPrice : 0);
+                    Bukkit.getServer().getPluginManager().callEvent(teleportEvent);
+
+                    AxPlayerWarps.getThreadedQueue().submit(() -> {
+                        AxPlayerWarps.getDatabase().addVisit(player, this);
+                    });
+                }, () -> {});
             });
         });
     }
 
     public void delete() {
         Player player = Bukkit.getPlayer(owner);
+
+        AxPlayerWarpsDeleteEvent deleteEvent = new AxPlayerWarpsDeleteEvent(player, this);
+        Bukkit.getServer().getPluginManager().callEvent(deleteEvent);
+        if (deleteEvent.isCancelled()) return;
+
         AxPlayerWarps.getThreadedQueue().submit(() -> {
             MESSAGEUTILS.sendLang(player, "delete.deleted", Map.of("%warp%", getName()));
             AxPlayerWarps.getDatabase().deleteWarp(this);
@@ -417,15 +462,25 @@ public class Warp {
 
     public void withdrawMoney() {
         Player player = Bukkit.getPlayer(owner);
-        if (earnedMoney <= 0 || currency == null) {
+        CurrencyIntegration integration = getCurrencyIntegration();
+        if (earnedMoney <= 0 || currency == null || integration == null) {
             MESSAGEUTILS.sendLang(player, "errors.nothing-withdrawable");
             return;
         }
-        currency.giveBalance(owner, earnedMoney);
-        MESSAGEUTILS.sendLang(player, "money.got", Map.of("%price%",
-                currency.getDisplayName()
-                        .replace("%price%", WarpPlaceholders.format(earnedMoney))));
+        double previous = earnedMoney;
         earnedMoney = 0;
-        AxPlayerWarps.getThreadedQueue().submit(() -> AxPlayerWarps.getDatabase().updateWarp(this));
+        integration.giveBalance(owner, previous).thenAccept(success -> {
+            if (!success) {
+                earnedMoney = previous;
+                return;
+            }
+
+            MESSAGEUTILS.sendLang(player, "money.got", Map.of(
+                "%price%", FormatUtils.formatCurrency(integration, previous)
+            ));
+            AxPlayerWarps.getThreadedQueue().submit(() -> {
+                AxPlayerWarps.getDatabase().updateWarp(this);
+            });
+        });
     }
 }

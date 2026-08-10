@@ -8,12 +8,17 @@ import java.util.jar.*;
 
 public class AxApiPatcher {
 
-    private static final String LISTENING_FIELD = "listening";
     private static final String OUTBOUND_FIELD  = "outboundListening";
     private static final String WRITE_METHOD    = "write";
     private static final String WRITE_DESC =
             "(Lio/netty/channel/ChannelHandlerContext;Ljava/lang/Object;" +
             "Lio/netty/channel/ChannelPromise;)V";
+    // Target classes live under com/artillexstudios/axapi/nms/v1_XX_RY/packet/
+    // and are named ChannelDuplexHandlerPacketListener. As of DEV-ITEMS-23 they
+    // no longer carry the old `listening` field themselves (it moved to
+    // PacketEvents), so we identify them by name + write() signature.
+    private static final String TARGET_CLASS_NAME_SUFFIX =
+            "/packet/ChannelDuplexHandlerPacketListener";
 
     public static void main(String[] args) throws Exception {
         if (args.length != 2) {
@@ -30,7 +35,7 @@ public class AxApiPatcher {
         }
 
         LinkedHashMap<String, byte[]> contents = new LinkedHashMap<>();
-        String patchedEntry = null;
+        int patchedCount = 0;
 
         try (JarFile jar = new JarFile(input)) {
             for (JarEntry entry : Collections.list(jar.entries())) {
@@ -45,16 +50,16 @@ public class AxApiPatcher {
                     }
                     System.out.println("Patching: " + entry.getName());
                     bytes = patch(bytes);
-                    patchedEntry = entry.getName();
+                    patchedCount++;
                 }
 
                 contents.put(entry.getName(), bytes);
             }
         }
 
-        if (patchedEntry == null) {
-            System.err.println("ERROR: Target class not found — expected a class with a" +
-                    " boolean '" + LISTENING_FIELD + "' field and a " + WRITE_METHOD + "() method.");
+        if (patchedCount == 0) {
+            System.err.println("ERROR: No class matching '*" + TARGET_CLASS_NAME_SUFFIX +
+                    "' with a " + WRITE_METHOD + "() method was found in the JAR.");
             System.exit(1);
         }
 
@@ -67,6 +72,7 @@ public class AxApiPatcher {
             }
         }
 
+        System.out.println("Patched " + patchedCount + " class(es).");
         System.out.println("Patched JAR written to: " + output.getAbsolutePath());
     }
 
@@ -80,24 +86,26 @@ public class AxApiPatcher {
         }
     }
 
-    /** True if the class has a boolean {@code listening} field AND the target {@code write()} method. */
+    /** True if the class is a ChannelDuplexHandlerPacketListener with the target write() method. */
     private static boolean isTargetClass(byte[] bytes) {
-        boolean[] flags = {false, false};
+        boolean[] hasWrite = {false};
+        String[] internalName = {null};
         new ClassReader(bytes).accept(new ClassVisitor(Opcodes.ASM9) {
             @Override
-            public FieldVisitor visitField(int access, String name, String desc,
-                                           String sig, Object val) {
-                if (LISTENING_FIELD.equals(name) && "Z".equals(desc)) flags[0] = true;
-                return null;
+            public void visit(int version, int access, String name, String sig,
+                              String superName, String[] ifaces) {
+                internalName[0] = name;
             }
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc,
                                              String sig, String[] ex) {
-                if (WRITE_METHOD.equals(name) && WRITE_DESC.equals(desc)) flags[1] = true;
+                if (WRITE_METHOD.equals(name) && WRITE_DESC.equals(desc)) hasWrite[0] = true;
                 return null;
             }
         }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG);
-        return flags[0] && flags[1];
+        return hasWrite[0]
+                && internalName[0] != null
+                && internalName[0].endsWith(TARGET_CLASS_NAME_SUFFIX);
     }
 
     private static boolean isAlreadyPatched(byte[] bytes) {

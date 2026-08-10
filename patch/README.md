@@ -25,9 +25,11 @@ In a real production profile (Spark, Paper 1.21, ~90 players, 5 minutes), this p
 
 ## What the patch does
 
-The patcher uses ASM to locate `ChannelDuplexHandlerPacketListener` (or its shaded
-equivalent — it scans for the class that holds a `boolean listening` field and a
-`write(ChannelHandlerContext, Object, ChannelPromise)` method), then makes two changes:
+The patcher uses ASM to locate every NMS-versioned copy of
+`com/artillexstudios/axapi/nms/v1_XX_RY/packet/ChannelDuplexHandlerPacketListener`
+(matched by class-name suffix + `write(ChannelHandlerContext, Object, ChannelPromise)`
+signature — as of AxAPI 2.2.x the class no longer carries its own `listening` field),
+then makes two changes to each copy:
 
 1. **Adds** `private boolean outboundListening` (default `false`).
 2. **Rewrites** the start of `write()` to return immediately when `outboundListening`
@@ -66,8 +68,8 @@ Example — re-generating the vendored JAR from a freshly downloaded original:
 
 ```bash
 java -jar patch/target/patch-tool.jar \
-  axapi-2.1.0-DEV-31-all.jar \
-  local-repo/com/artillexstudios/axapi/axapi/2.1.0-DEV-31/axapi-2.1.0-DEV-31-all.jar
+  axapi-2.2.0-DEV-ITEMS-23-all.jar \
+  local-repo/com/artillexstudios/axapi/axapi/2.2.0-DEV-ITEMS-23/axapi-2.2.0-DEV-ITEMS-23-all.jar
 ```
 
 The tool will:
