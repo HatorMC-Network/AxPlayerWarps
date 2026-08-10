@@ -89,6 +89,11 @@
 
     <repositories>
         <repository>
+            <id>local-vendor</id>
+            <name>Project-local vendored JARs (patched AxAPI)</name>
+            <url>file://${project.basedir}/local-repo</url>
+        </repository>
+        <repository>
             <id>Artillex-Studios</id>
             <url>https://repo.artillex-studios.com/releases/</url>
         </repository>
@@ -133,6 +138,9 @@
             <groupId>com.artillexstudios.axapi</groupId>
             <artifactId>axapi</artifactId>
             <version>2.2.0-DEV-ITEMS-23</version>
+            <!-- Resolved from local-repo/: the vendored jar has an ASM patch that adds
+                 an outboundListening short-circuit to ChannelDuplexHandlerPacketListener.write().
+                 See patch/ for source and https://github.com/Artillex-Studios/Issues (AxAPI). -->
             <scope>compile</scope>
             <classifier>all</classifier>
         </dependency>

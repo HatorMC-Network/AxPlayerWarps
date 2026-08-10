@@ -112,3 +112,6 @@ buildNumber.properties
 
 # Common working directory
 run/
+
+# Vendored patched AxAPI jar (see patch/README.md)
+!local-repo/**/*.jar
